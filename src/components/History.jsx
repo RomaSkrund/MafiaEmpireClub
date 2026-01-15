@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '../supabaseClient';
 
 // Вспомогательный компонент для иконок ролей
 const RoleIcon = ({ role }) => {
@@ -70,11 +71,39 @@ const GameCard = ({ game, index }) => {
   );
 };
 
-const History = ({ tournaments, gameHistory }) => {
-  const [expanded, setExpanded] = useState(null);
+const inputStyle = { background: '#333', color: '#fff', border: '1px solid #555', padding: '10px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' };
 
+const History = ({ tournaments, gameHistory, onUpdate }) => {
+  const [expanded, setExpanded] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newDate, setNewDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const handleCreateTournament = async () => {
+    if (!newDate) return alert('Укажите дату вечера.');
+    if (!newName.trim()) return alert('Введите название вечера.');
+
+    const { error } = await supabase.from('tournaments').insert([{ date: newDate, name: newName.trim() }]);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setNewName('');
+    onUpdate?.();
+    alert('Рейтинговый вечер создан!');
+  };
   return (
     <div style={{ width: '100%' }}>
+       <div style={{ marginBottom: '25px', background: '#1b1b1b', padding: '20px', borderRadius: '12px' }}>
+        <h2 style={{ margin: '0 0 15px', color: '#ffd700' }}>Создать рейтинговый вечер</h2>
+        <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} style={inputStyle} />
+          <input type="text" placeholder="Название вечера" value={newName} onChange={(e) => setNewName(e.target.value)} style={inputStyle} />
+          <button onClick={handleCreateTournament} style={{ padding: '12px', background: '#2d5a27', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+            ➕ Создать вечер
+          </button>
+        </div>
+      </div>
       {tournaments.map(t => (
         <div key={t.id} style={{ marginBottom: '15px', background: '#222', borderRadius: '10px', overflow: 'hidden' }}>
           {/* Заголовок вечера */}
