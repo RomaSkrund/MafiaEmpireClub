@@ -103,6 +103,7 @@ const percentFormat = new Intl.NumberFormat('ru-RU', {
 });
 
 const toNumber = (value) => Number(value || 0);
+const CI_POINTS = { mafia: 0.05, don: 0.1 };
 
 const parseDate = (value) => {
   if (!value) return null;
@@ -118,23 +119,39 @@ const parseDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const parseFirstShot = (value) =>
+  String(value || '')
+    .split(/[^\d]+/)
+    .filter(Boolean)
+    .map((item) => Number(item))
+    .filter((item) => item >= 1 && item <= 10);
+
 const isInRange = (date, start, end) => Boolean(date && date >= start && date <= end);
 
-const createGameDateMap = (gameHistory, tournaments) => {
-  const tournamentDateMap = new Map(
-    tournaments.map((tournament) => [tournament.id, parseDate(tournament.date)])
-  );
+const createGameMetaMap = (gameHistory, tournaments) => {
+  const tournamentDateMap = new Map(tournaments.map((tournament) => [tournament.id, parseDate(tournament.date)]));
 
   return new Map(
     gameHistory.map((game) => {
       const tournamentDate = tournamentDateMap.get(game.tournament_id);
       const fallbackDate = parseDate(game.created_at);
-      return [game.id, tournamentDate || fallbackDate];
+      const seatRoleMap = new Map((game.game_results || []).map((result, index) => [index + 1, result.role]));
+
+      return [
+        game.id,
+        {
+          date: tournamentDate || fallbackDate,
+          seatRoleMap,
+        },
+      ];
     })
   );
 };
 
-const calculateStats = (results) => {
+const calculateCi = (firstShot, seatRoleMap) =>
+  parseFirstShot(firstShot).reduce((total, seat) => total + (CI_POINTS[seatRoleMap?.get(seat)] || 0), 0);
+
+const calculateStats = (results, gameMetaMap) => {
   const stats = {
     g_don: 0,
     w_don: 0,
@@ -144,7 +161,7 @@ const calculateStats = (results) => {
     w_sher: 0,
     g_red: 0,
     w_red: 0,
-    firstKill: 0,
+    firstShotCount: 0,
     ci: 0,
     bestMove: 0,
     extra: 0,
@@ -171,9 +188,9 @@ const calculateStats = (results) => {
       stats.gameIds.add(result.game_id);
     }
 
-    if (result.is_first_kill) {
-      stats.firstKill += 1;
-      stats.ci += 0.1;
+    if (result.first_shot) {
+      stats.firstShotCount += 1;
+      stats.ci += calculateCi(result.first_shot, gameMetaMap.get(result.game_id)?.seatRoleMap);
     }
 
     stats.bestMove += toNumber(result.best_move_points);
@@ -195,19 +212,19 @@ const calculateStats = (results) => {
   };
 };
 
-const buildSeasonTable = (players, gameDateMap, season) => {
+const buildSeasonTable = (players, gameMetaMap, season) => {
   const start = parseDate(season.start);
   const end = parseDate(season.end);
 
   const rows = players
     .map((player) => {
       const seasonResults = (player.game_results || []).filter((result) =>
-        isInRange(gameDateMap.get(result.game_id), start, end)
+        isInRange(gameMetaMap.get(result.game_id)?.date, start, end)
       );
 
       return {
         ...player,
-        stats: calculateStats(seasonResults),
+        stats: calculateStats(seasonResults, gameMetaMap),
       };
     })
     .filter((player) => player.stats.gamesTotal > 0)
@@ -316,8 +333,8 @@ const RatingTable = ({ season, totalGames, rows }) => (
           <col style={{ width: '48px' }} />
           <col style={{ width: '48px' }} />
           <col style={{ width: '48px' }} />
-          <col style={{ width: '70px' }} />
-          <col style={{ width: '40px' }} />
+          <col style={{ width: '56px' }} />
+          <col style={{ width: '46px' }} />
           <col style={{ width: '42px' }} />
           <col style={{ width: '62px' }} />
           <col style={{ width: '72px' }} />
@@ -336,13 +353,13 @@ const RatingTable = ({ season, totalGames, rows }) => (
             <th style={topHeaderStyle} colSpan="2">Мафия</th>
             <th style={{ ...topHeaderStyle, color: '#a51111' }} colSpan="2">Шериф</th>
             <th style={{ ...topHeaderStyle, color: '#a51111' }} colSpan="2">Красный</th>
-            <th style={topHeaderStyle} rowSpan="2">1 отстрел</th>
+            <th style={topHeaderStyle} rowSpan="2">ПУ</th>
             <th style={topHeaderStyle} rowSpan="2">Ci</th>
             <th style={topHeaderStyle} rowSpan="2">ЛХ</th>
             <th style={topHeaderStyle} rowSpan="2">Допы</th>
             <th style={topHeaderStyle} rowSpan="2">Минус</th>
             <th style={topHeaderStyle} rowSpan="2">Баллы</th>
-            <th style={topHeaderStyle} rowSpan="2">Коэффициенты</th>
+            <th style={topHeaderStyle} rowSpan="2">Коэффициент</th>
             <th style={topHeaderStyle} rowSpan="2">% игр к общему</th>
           </tr>
           <tr>
@@ -377,7 +394,7 @@ const RatingTable = ({ season, totalGames, rows }) => (
               <td style={{ ...bodyCellStyle, color: '#a51111' }}>{player.stats.w_sher}</td>
               <td style={{ ...bodyCellStyle, color: '#a51111' }}>{player.stats.g_red}</td>
               <td style={{ ...bodyCellStyle, color: '#a51111' }}>{player.stats.w_red}</td>
-              <td style={bodyCellStyle}>{player.stats.firstKill}</td>
+              <td style={bodyCellStyle}>{player.stats.firstShotCount}</td>
               <td style={bodyCellStyle}>{numberFormat.format(player.stats.ci)}</td>
               <td style={bodyCellStyle}>{numberFormat.format(player.stats.bestMove)}</td>
               <td style={bodyCellStyle}>{numberFormat.format(player.stats.extra)}</td>
@@ -415,9 +432,9 @@ const Rating = ({ players, tournaments, gameHistory }) => {
   const [activeSeasonId, setActiveSeasonId] = useState('year');
 
   const seasonTables = useMemo(() => {
-    const gameDateMap = createGameDateMap(gameHistory, tournaments);
+    const gameMetaMap = createGameMetaMap(gameHistory, tournaments);
     return Object.fromEntries(
-      SEASON_CONFIGS.map((season) => [season.id, buildSeasonTable(players, gameDateMap, season)])
+      SEASON_CONFIGS.map((season) => [season.id, buildSeasonTable(players, gameMetaMap, season)])
     );
   }, [gameHistory, players, tournaments]);
 

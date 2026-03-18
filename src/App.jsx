@@ -82,7 +82,7 @@ export default function App() {
         {activeTab === 'rating' && <Rating players={players} tournaments={tournaments} gameHistory={gameHistory} />}
         {activeTab === 'new-game' && <NewGame players={players} tournaments={tournaments} onGameSaved={loadAll} />}
         {activeTab === 'players' && <Players players={players} onUpdate={loadAll} />}
-        {activeTab === 'history' && <History tournaments={tournaments} gameHistory={gameHistory} />}
+        {activeTab === 'history' && <History tournaments={tournaments} gameHistory={gameHistory} players={players} onUpdate={loadAll} />}
       </div>
     </div>
   );
