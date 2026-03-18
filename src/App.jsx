@@ -79,7 +79,7 @@ export default function App() {
         boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
         boxSizing: 'border-box'
       }}>
-        {activeTab === 'rating' && <Rating players={players} />}
+        {activeTab === 'rating' && <Rating players={players} tournaments={tournaments} gameHistory={gameHistory} />}
         {activeTab === 'new-game' && <NewGame players={players} tournaments={tournaments} onGameSaved={loadAll} />}
         {activeTab === 'players' && <Players players={players} onUpdate={loadAll} />}
         {activeTab === 'history' && <History tournaments={tournaments} gameHistory={gameHistory} />}
